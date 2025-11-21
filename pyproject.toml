@@ -1,5 +1,5 @@
 [project]
-name = "ibis-var"
+name = "typewing"
 version = "0.1.0"
 description = "Type-safe Ibis table extensions with SQLModel-like interface"
 readme = "README.md"

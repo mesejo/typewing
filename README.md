@@ -1,4 +1,4 @@
-# ibis-var
+# typewing
 
 Type-safe Ibis table extensions with SQLModel-like interface. Create typed models for your database tables and get full IDE autocomplete support while preserving all of Ibis's powerful query building capabilities.
 
@@ -14,19 +14,19 @@ Type-safe Ibis table extensions with SQLModel-like interface. Create typed model
 ## Installation
 
 ```bash
-pip install ibis-var
+pip install typewing
 ```
 
 Or with uv:
 
 ```bash
-uv add ibis-var
+uv add typewing
 ```
 
 ## Quick Start
 
 ```python
-from ibis_var import IbisModel, Field
+from typewing import IbisModel, Field
 import ibis
 
 # Define your model with type annotations
@@ -66,7 +66,7 @@ results = query.execute()
 Models are defined by inheriting from `IbisModel` and using type annotations:
 
 ```python
-from ibis_var import IbisModel, Field
+from typewing import IbisModel, Field
 
 class Product(IbisModel):
     # Explicit table name (optional - defaults to lowercase class name)
@@ -187,7 +187,7 @@ for index, row in results.iterrows():
 
 ### Working with Multiple Backends
 
-ibis-var works with any Ibis backend:
+typewing works with any Ibis backend:
 
 ```python
 # DuckDB
@@ -279,9 +279,9 @@ query = UserTable.mutate(
 
 ## Comparison with SQLModel
 
-If you're familiar with SQLModel, here's how ibis-var compares:
+If you're familiar with SQLModel, here's how typewing compares:
 
-| Feature | SQLModel | ibis-var |
+| Feature | SQLModel | typewing |
 |---------|----------|----------|
 | Type annotations |  |  |
 | IDE autocomplete |  |  |
@@ -292,7 +292,7 @@ If you're familiar with SQLModel, here's how ibis-var compares:
 | Data validation |  |  |
 | Model instances |  |  (returns DataFrames) |
 
-ibis-var is designed for:
+typewing is designed for:
 - **Complex analytical queries** where Ibis excels
 - **Working with multiple database backends** with a unified API
 - **Type-safe query building** without ORM overhead
@@ -303,7 +303,7 @@ ibis-var is designed for:
 ### Example 1: User Analytics
 
 ```python
-from ibis_var import IbisModel, Field
+from typewing import IbisModel, Field
 import ibis
 
 class User(IbisModel):
@@ -402,7 +402,7 @@ uv sync --extra dev
 uv run pytest tests/ -v
 
 # With coverage
-uv run pytest tests/ --cov=ibis_var --cov-report=html
+uv run pytest tests/ --cov=typewing --cov-report=html
 ```
 
 ## Contributing

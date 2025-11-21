@@ -1,4 +1,4 @@
-"""Core model classes for ibis-var."""
+"""Core model classes for typewing."""
 
 from __future__ import annotations
 
@@ -186,7 +186,7 @@ class IbisModel(metaclass=ModelMeta):
 
     Example:
         ```python
-        from ibis_var import IbisModel, Field
+        from typewing import IbisModel, Field
         import ibis
 
         class User(IbisModel):

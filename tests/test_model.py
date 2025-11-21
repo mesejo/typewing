@@ -2,7 +2,7 @@
 
 import pytest
 import ibis
-from ibis_var import IbisModel, Field
+from typewing import IbisModel, Field
 
 
 class User(IbisModel):
