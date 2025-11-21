@@ -1,0 +1,26 @@
+[project]
+name = "ibis-var"
+version = "0.1.0"
+description = "Type-safe Ibis table extensions with SQLModel-like interface"
+readme = "README.md"
+authors = [
+    { name = "Daniel Mesejo", email = "mesejoleon@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ibis-framework[duckdb]>=11.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
