@@ -98,9 +98,9 @@ def test_field_types():
     """Test getting field type mappings."""
     field_types = User.get_field_types()
 
-    assert field_types["id"] == int
-    assert field_types["name"] == str
-    assert field_types["email"] == str
+    assert field_types["id"] is int
+    assert field_types["name"] is str
+    assert field_types["email"] is str
     # age is Optional[int] which is Union[int, None]
     assert "age" in field_types
 
@@ -181,7 +181,9 @@ def test_filter_query(duckdb_con):
     result = query.execute()
 
     assert len(result) == 2
-    assert all(row["age"] > 28 for _, row in result.iterrows() if row["age"] is not None)
+    assert all(
+        row["age"] > 28 for _, row in result.iterrows() if row["age"] is not None
+    )
 
 
 def test_select_specific_columns(duckdb_con):
@@ -280,7 +282,7 @@ def test_column_with_alias(duckdb_con):
     active_col = UserTable.is_active
     assert active_col is not None
 
-    query = UserTable.filter(UserTable.is_active == True)
+    query = UserTable.filter(UserTable.is_active)
     result = query.execute()
 
     assert len(result) == 3

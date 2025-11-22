@@ -4,7 +4,7 @@ import pytest
 import ibis
 import pandas as pd
 import numpy as np
-from typewing import IbisModel, Field
+from typewing import IbisModel
 
 
 class TestData(IbisModel):
@@ -114,9 +114,7 @@ def test_count_aggregate(test_table, df):
 
 def test_complex_sum(test_table, df):
     """Test sum with expression."""
-    result = test_table.aggregate(
-        sum_val=(test_table.double_col + 5).sum()
-    ).execute()
+    result = test_table.aggregate(sum_val=(test_table.double_col + 5).sum()).execute()
     expected = (df.double_col + 5).sum()
     assert pytest.approx(result["sum_val"].iloc[0]) == expected
 
@@ -150,9 +148,7 @@ def test_grouped_mean(test_table, df):
 def test_grouped_with_by_parameter(test_table, df):
     """Test aggregation using 'by' parameter."""
     result = (
-        test_table.aggregate(
-            sum_val=test_table.int_col.sum(), by="bigint_col"
-        )
+        test_table.aggregate(sum_val=test_table.int_col.sum(), by="bigint_col")
         .order_by("bigint_col")
         .execute()
     )
@@ -255,9 +251,7 @@ def test_var_pop_aggregate(test_table, df):
 
 def test_any_aggregate(test_table, df):
     """Test any aggregation."""
-    result = test_table.aggregate(
-        any_val=test_table.bool_col.any()
-    ).execute()
+    result = test_table.aggregate(any_val=test_table.bool_col.any()).execute()
 
     expected = df.bool_col.any()
     assert result["any_val"].iloc[0] == expected
@@ -265,9 +259,7 @@ def test_any_aggregate(test_table, df):
 
 def test_all_aggregate(test_table, df):
     """Test all aggregation."""
-    result = test_table.aggregate(
-        all_val=test_table.bool_col.all()
-    ).execute()
+    result = test_table.aggregate(all_val=test_table.bool_col.all()).execute()
 
     expected = df.bool_col.all()
     assert result["all_val"].iloc[0] == expected
@@ -300,9 +292,7 @@ def test_all_with_where(test_table, df):
 
 def test_nunique(test_table, df):
     """Test nunique (count distinct)."""
-    result = test_table.aggregate(
-        nunique_val=test_table.string_col.nunique()
-    ).execute()
+    result = test_table.aggregate(nunique_val=test_table.string_col.nunique()).execute()
 
     expected = df.string_col.nunique()
     assert result["nunique_val"].iloc[0] == expected
@@ -351,17 +341,19 @@ def test_group_concat_with_where(test_table, df):
 
     result = (
         test_table.group_by("bigint_col")
-        .aggregate(
-            concat_val=test_table.string_col.group_concat(":", where=where_cond)
-        )
+        .aggregate(concat_val=test_table.string_col.group_concat(":", where=where_cond))
         .order_by("bigint_col")
         .execute()
     )
 
     expected = (
-        df.assign(string_col=df.string_col.where(df.string_col.isin(["1", "3", "5", "7"])))
+        df.assign(
+            string_col=df.string_col.where(df.string_col.isin(["1", "3", "5", "7"]))
+        )
         .groupby("bigint_col")
-        .string_col.agg(lambda s: (np.nan if pd.isna(s).all() else ":".join(s.dropna().values)))
+        .string_col.agg(
+            lambda s: (np.nan if pd.isna(s).all() else ":".join(s.dropna().values))
+        )
         .rename("concat_val")
         .reset_index()
         .sort_values("bigint_col")
@@ -428,9 +420,7 @@ def test_multiple_grouped_aggregations(test_table, df):
 
 def test_aggregate_with_expression(test_table, df):
     """Test aggregation on expression."""
-    result = test_table.aggregate(
-        bool_sum=(test_table.int_col > 0).sum()
-    ).execute()
+    result = test_table.aggregate(bool_sum=(test_table.int_col > 0).sum()).execute()
 
     expected = (df.int_col > 0).sum()
     assert result["bool_sum"].iloc[0] == expected
@@ -438,9 +428,7 @@ def test_aggregate_with_expression(test_table, df):
 
 def test_aggregate_modulo_expression(test_table, df):
     """Test aggregation with modulo expression."""
-    result = test_table.aggregate(
-        avg_mod=(test_table.int_col % 3).mean()
-    ).execute()
+    result = test_table.aggregate(avg_mod=(test_table.int_col % 3).mean()).execute()
 
     expected = (df.int_col % 3).mean()
     assert pytest.approx(result["avg_mod"].iloc[0]) == expected
@@ -451,9 +439,7 @@ def test_aggregate_modulo_expression(test_table, df):
 
 def test_bit_and(test_table, df):
     """Test bitwise AND aggregation."""
-    result = test_table.aggregate(
-        bit_and_val=test_table.bigint_col.bit_and()
-    ).execute()
+    result = test_table.aggregate(bit_and_val=test_table.bigint_col.bit_and()).execute()
 
     expected = np.bitwise_and.reduce(df.bigint_col.values)
     assert result["bit_and_val"].iloc[0] == expected
@@ -461,9 +447,7 @@ def test_bit_and(test_table, df):
 
 def test_bit_or(test_table, df):
     """Test bitwise OR aggregation."""
-    result = test_table.aggregate(
-        bit_or_val=test_table.bigint_col.bit_or()
-    ).execute()
+    result = test_table.aggregate(bit_or_val=test_table.bigint_col.bit_or()).execute()
 
     expected = np.bitwise_or.reduce(df.bigint_col.values)
     assert result["bit_or_val"].iloc[0] == expected
@@ -471,9 +455,7 @@ def test_bit_or(test_table, df):
 
 def test_bit_xor(test_table, df):
     """Test bitwise XOR aggregation."""
-    result = test_table.aggregate(
-        bit_xor_val=test_table.bigint_col.bit_xor()
-    ).execute()
+    result = test_table.aggregate(bit_xor_val=test_table.bigint_col.bit_xor()).execute()
 
     expected = np.bitwise_xor.reduce(df.bigint_col.values)
     assert result["bit_xor_val"].iloc[0] == expected

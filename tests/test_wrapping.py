@@ -163,7 +163,7 @@ def test_join_returns_typed_table(duckdb_con):
     )
 
     UserTable = User.bind(con)
-    ProductTable = Product.bind(con, table_name="products")
+    Product.bind(con, table_name="products")
     OrdersTable = con.table("orders")
 
     # Test join
@@ -220,4 +220,3 @@ def test_chained_operations_return_typed_table(duckdb_con):
     # Test that we can still execute and get results
     result = query.execute()
     assert len(result) > 0
-

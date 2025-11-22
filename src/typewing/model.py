@@ -97,7 +97,9 @@ class ModelMeta(type):
                 continue
 
             # Get the field value if it exists
-            field_value = getattr(cls, field_name, None) if field_name in namespace else None
+            field_value = (
+                getattr(cls, field_name, None) if field_name in namespace else None
+            )
 
             metadata = {
                 "type": field_type,
@@ -115,7 +117,9 @@ class ModelMeta(type):
         # Now add class-level descriptors for each field
         # This enables IDE autocomplete on the class itself
         for field_name in cls._fields_metadata.keys():
-            if not hasattr(cls, field_name) or isinstance(getattr(cls, field_name, None), Field):
+            if not hasattr(cls, field_name) or isinstance(
+                getattr(cls, field_name, None), Field
+            ):
                 # Create a descriptor that provides documentation
                 descriptor = FieldDescriptor(field_name)
                 setattr(cls, field_name, descriptor)
@@ -140,12 +144,14 @@ class TypedGroupedTable:
 
         # If it's a callable (method), wrap it to return TypedTable when appropriate
         if callable(attr):
+
             def wrapped_method(*args, **kwargs):
                 result = attr(*args, **kwargs)
                 # If the result is a Table, wrap it in TypedTable
                 if isinstance(result, Table):
                     return TypedTable(result, self._model_class)
                 return result
+
             return wrapped_method
 
         return attr
@@ -193,6 +199,7 @@ class TypedTable:
 
         # If it's a callable (method), wrap it to return TypedTable when appropriate
         if callable(attr):
+
             def wrapped_method(*args, **kwargs):
                 result = attr(*args, **kwargs)
                 # If the result is a Table, wrap it in TypedTable
@@ -202,6 +209,7 @@ class TypedTable:
                 elif isinstance(result, GroupedTable):
                     return TypedGroupedTable(result, self._model_class)
                 return result
+
             return wrapped_method
 
         return attr
@@ -227,7 +235,9 @@ class TypedTable:
         if name.startswith("_"):
             object.__setattr__(self, name, value)
         else:
-            raise AttributeError(f"Cannot set attribute {name} on {self.__class__.__name__}")
+            raise AttributeError(
+                f"Cannot set attribute {name} on {self.__class__.__name__}"
+            )
 
 
 class IbisModel(metaclass=ModelMeta):
@@ -280,7 +290,9 @@ class IbisModel(metaclass=ModelMeta):
         return metadata.get("alias") or field_name
 
     @classmethod
-    def bind(cls: type[T], connection: Any, table_name: str | None = None) -> TypedTable:
+    def bind(
+        cls: type[T], connection: Any, table_name: str | None = None
+    ) -> TypedTable:
         """Bind this model to an ibis connection and return a typed Table.
 
         Args:

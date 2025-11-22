@@ -14,7 +14,9 @@ class User(IbisModel):
     name: str
     email: str
     age: int | None = Field(description="User's age in years")
-    is_active: bool = Field(alias="active", description="Whether the user account is active")
+    is_active: bool = Field(
+        alias="active", description="Whether the user account is active"
+    )
 
 
 class Product(IbisModel):
@@ -112,8 +114,7 @@ def main():
     print("Example 2: Filter active users with age > 25")
     print("-" * 60)
     active_users = (
-        UserTable
-        .filter(UserTable.is_active == True)
+        UserTable.filter(UserTable.is_active)
         .filter(UserTable.age > 25)
         .select("name", "email", "age")
     )
@@ -125,8 +126,7 @@ def main():
     print("Example 3: Users ordered by age (descending)")
     print("-" * 60)
     ordered = (
-        UserTable
-        .filter(UserTable.age.notnull())
+        UserTable.filter(UserTable.age.notnull())
         .select("name", "age")
         .order_by(UserTable.age.desc())
     )
@@ -154,8 +154,7 @@ def main():
     print("Example 5: Electronics under $100")
     print("-" * 60)
     affordable_electronics = (
-        ProductTable
-        .filter(ProductTable.category == "Electronics")
+        ProductTable.filter(ProductTable.category == "Electronics")
         .filter(ProductTable.price < 100)
         .select("name", "price", "stock")
         .order_by(ProductTable.price.asc())
@@ -167,14 +166,10 @@ def main():
     # Example 6: Product inventory summary
     print("Example 6: Inventory by category")
     print("-" * 60)
-    inventory = (
-        ProductTable
-        .group_by("category")
-        .aggregate(
-            num_products=ProductTable.product_id.count(),
-            total_value=(ProductTable.price * ProductTable.stock).sum(),
-            avg_price=ProductTable.price.mean(),
-        )
+    inventory = ProductTable.group_by("category").aggregate(
+        num_products=ProductTable.product_id.count(),
+        total_value=(ProductTable.price * ProductTable.stock).sum(),
+        avg_price=ProductTable.price.mean(),
     )
     results = inventory.execute()
     print(results)
@@ -184,8 +179,7 @@ def main():
     print("Example 7: Top 3 most expensive products")
     print("-" * 60)
     top_products = (
-        ProductTable
-        .select("name", "price")
+        ProductTable.select("name", "price")
         .order_by(ProductTable.price.desc())
         .limit(3)
     )

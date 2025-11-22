@@ -218,7 +218,7 @@ def test_quick_start_filter_active(duckdb_con):
     """Test Quick Start example: filter by is_active == True."""
     UserTable = User.bind(duckdb_con)
 
-    query = UserTable.filter(UserTable.is_active == True)
+    query = UserTable.filter(UserTable.is_active)
     results = query.execute()
 
     assert len(results) == 5
@@ -230,9 +230,8 @@ def test_quick_start_chained_query(duckdb_con):
     UserTable = User.bind(duckdb_con)
 
     query = (
-        UserTable
-        .filter(UserTable.age > 18)
-        .filter(UserTable.is_active == True)
+        UserTable.filter(UserTable.age > 18)
+        .filter(UserTable.is_active)
         .select("name", "email")
         .order_by("name")
         .limit(10)
@@ -254,7 +253,7 @@ def test_field_aliases_mapping(duckdb_con):
     """Test Field Aliases example: Python names map to database columns."""
     UserAliasTable = UserWithAliases.bind(duckdb_con)
 
-    query = UserAliasTable.filter(UserAliasTable.is_active == True)
+    query = UserAliasTable.filter(UserAliasTable.is_active)
     results = query.execute()
 
     assert len(results) == 2
@@ -277,7 +276,7 @@ def test_query_building_filtering(duckdb_con):
     """Test Query Building example: filtering."""
     UserTable = User.bind(duckdb_con)
 
-    active_users = UserTable.filter(UserTable.is_active == True)
+    active_users = UserTable.filter(UserTable.is_active)
     results = active_users.execute()
 
     assert len(results) == 5
@@ -300,8 +299,7 @@ def test_query_building_chaining(duckdb_con):
     UserTable = User.bind(duckdb_con)
 
     query = (
-        UserTable
-        .filter(UserTable.age > 18)
+        UserTable.filter(UserTable.age > 18)
         .filter(UserTable.name.like("A%"))
         .select("name", "email", "age")
         .order_by(UserTable.age.desc())
@@ -341,13 +339,8 @@ def test_query_building_grouping(duckdb_con):
     """Test Query Building example: grouping."""
     ProductTable = Product.bind(duckdb_con)
 
-    by_category = (
-        ProductTable
-        .group_by("category")
-        .aggregate(
-            count=ProductTable.count(),
-            avg_price=ProductTable.price.mean()
-        )
+    by_category = ProductTable.group_by("category").aggregate(
+        count=ProductTable.count(), avg_price=ProductTable.price.mean()
     )
 
     results = by_category.execute()
@@ -358,7 +351,10 @@ def test_query_building_grouping(duckdb_con):
     # Check Electronics stats
     electronics = results[results["category"] == "Electronics"].iloc[0]
     assert electronics["count"] == 4
-    assert pytest.approx(electronics["avg_price"], rel=0.01) == (999.99 + 25.50 + 75.00 + 45.00) / 4
+    assert (
+        pytest.approx(electronics["avg_price"], rel=0.01)
+        == (999.99 + 25.50 + 75.00 + 45.00) / 4
+    )
 
 
 def test_query_building_joins(duckdb_con):
@@ -419,9 +415,9 @@ def test_advanced_usage_get_field_types():
     """Test Advanced Usage example: get_field_types()."""
     field_types = User.get_field_types()
 
-    assert field_types["id"] == int
-    assert field_types["name"] == str
-    assert field_types["email"] == str
+    assert field_types["id"] is int
+    assert field_types["name"] is str
+    assert field_types["email"] is str
     assert "age" in field_types
 
 
@@ -443,12 +439,7 @@ def test_advanced_usage_ibis_expressions(duckdb_con):
     """Test Advanced Usage example: using with Ibis expressions."""
     UserTable = User.bind(duckdb_con)
 
-    query = UserTable.filter(
-        ibis.and_(
-            UserTable.age > 18,
-            UserTable.name.length() > 3
-        )
-    )
+    query = UserTable.filter(ibis.and_(UserTable.age > 18, UserTable.name.length() > 3))
 
     results = query.execute()
 
@@ -460,9 +451,7 @@ def test_advanced_usage_window_functions(duckdb_con):
     """Test Advanced Usage example: window functions."""
     UserTable = User.bind(duckdb_con)
 
-    query = UserTable.mutate(
-        rank=ibis.rank().over(order_by=UserTable.age.desc())
-    )
+    query = UserTable.mutate(rank=ibis.rank().over(order_by=UserTable.age.desc()))
 
     results = query.execute()
 
@@ -496,7 +485,7 @@ def test_example_user_analytics_age_stats(duckdb_con):
         avg_age=filtered_table.age.mean(),
         min_age=filtered_table.age.min(),
         max_age=filtered_table.age.max(),
-        count=filtered_table.count()
+        count=filtered_table.count(),
     ).execute()
 
     assert age_stats["avg_age"].iloc[0] == pytest.approx((28 + 35 + 42 + 31 + 29) / 5)
@@ -513,8 +502,7 @@ def test_example_ecommerce_affordable_products(duckdb_con):
     ProductTable = Product.bind(duckdb_con)
 
     query = (
-        ProductTable
-        .filter(ProductTable.is_available == True)
+        ProductTable.filter(ProductTable.is_available)
         .filter(ProductTable.price < 50)
         .order_by(ProductTable.price.asc())
     )
@@ -537,12 +525,11 @@ def test_example_sales_analytics_daily_revenue(duckdb_con):
     SaleTable = Sale.bind(duckdb_con)
 
     daily_revenue = (
-        SaleTable
-        .group_by("sale_date")
+        SaleTable.group_by("sale_date")
         .aggregate(
             total_revenue=SaleTable.revenue.sum(),
             total_quantity=SaleTable.quantity.sum(),
-            num_sales=SaleTable.count()
+            num_sales=SaleTable.count(),
         )
         .order_by("sale_date")
     )
@@ -591,7 +578,9 @@ def test_executing_queries_iterate_results(duckdb_con):
         collected.append((row["name"], row["email"]))
 
     assert len(collected) == 4
-    assert all(isinstance(item[0], str) and isinstance(item[1], str) for item in collected)
+    assert all(
+        isinstance(item[0], str) and isinstance(item[1], str) for item in collected
+    )
 
 
 # Additional Edge Case Tests
@@ -623,10 +612,9 @@ def test_complex_filter_conditions(duckdb_con):
     ProductTable = Product.bind(duckdb_con)
 
     query = (
-        ProductTable
-        .filter(ProductTable.category == "Electronics")
+        ProductTable.filter(ProductTable.category == "Electronics")
         .filter(ProductTable.price < 100)
-        .filter(ProductTable.is_available == True)
+        .filter(ProductTable.is_available)
     )
 
     results = query.execute()
