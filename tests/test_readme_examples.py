@@ -1,8 +1,9 @@
 """Tests for README.md code examples."""
 
-import pytest
 import ibis
-from typewing import IbisModel, Field
+import pytest
+
+from typewing import Field, IbisModel
 
 
 # Model definitions from README examples

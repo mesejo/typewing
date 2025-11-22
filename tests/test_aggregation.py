@@ -1,9 +1,10 @@
 """Tests for aggregation operations in typewing using DuckDB backend."""
 
-import pytest
 import ibis
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 from typewing import IbisModel
 
 

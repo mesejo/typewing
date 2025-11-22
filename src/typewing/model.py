@@ -15,6 +15,7 @@ from typing import (
 from ibis.expr.types import Table
 from ibis.expr.types.groupby import GroupedTable
 
+
 if TYPE_CHECKING:
     import ibis.expr.schema as sch
     import ibis.expr.types as ir

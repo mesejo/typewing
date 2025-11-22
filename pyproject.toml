@@ -28,3 +28,16 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I", "ICN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["typewing"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+lines-after-imports = 2
+
+[tool.codespell]
+skip = "*.lock,.direnv,.git,docs/_freeze/**/html.json"
+ignore-regex = '\b(DOUB|i[if]f|I[IF]F|lamduh|AFE|crate|ba)\b'
+builtin = "clear,rare,names"

@@ -1,9 +1,7 @@
-from typewing import IbisModel, Field
-
+import ibis
 import pytest
 
-import ibis
-
+from typewing import Field, IbisModel
 from typewing.model import TypedTable
 
 

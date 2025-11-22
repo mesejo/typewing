@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import ibis
 import pytest
 
-import ibis
 from typewing import IbisModel
 from typewing.model import TypedTable
 

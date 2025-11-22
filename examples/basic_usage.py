@@ -1,7 +1,8 @@
 """Basic usage example for ibis-var."""
 
-from typewing import IbisModel, Field
 import ibis
+
+from typewing import Field, IbisModel
 
 
 # Define models

@@ -1,4 +1,5 @@
-from typewing.model import IbisModel, Field
+from typewing.model import Field, IbisModel
+
 
 try:
     import importlib.metadata as importlib_metadata
