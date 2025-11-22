@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "ibis-framework[duckdb]>=11.0.0",
+    "ibis-framework>=11.0.0",
 ]
 
 [project.optional-dependencies]
@@ -17,6 +17,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.14.6",
+    "ibis-framework[duckdb]>=11.0.0",
 ]
 
 [build-system]
