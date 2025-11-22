@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "ibis-framework>=11.0.0",
+    "sqlglot>=23.4,<28,!=26.32.0",
 ]
 
 [project.optional-dependencies]
