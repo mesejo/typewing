@@ -1,6 +1,6 @@
 """Basic usage example for ibis-var."""
 
-from ibis_var import IbisModel, Field
+from typewing import IbisModel, Field
 import ibis
 
 

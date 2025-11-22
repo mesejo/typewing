@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, ClassVar, TypeVar, get_type_hints
 
 from ibis.expr.types import Table
+from ibis.expr.types.groupby import GroupedTable
 
 T = TypeVar("T", bound="IbisModel")
 
@@ -122,6 +123,38 @@ class ModelMeta(type):
         return cls
 
 
+class TypedGroupedTable:
+    """Wrapper around an Ibis GroupedTable that preserves type information.
+
+    This class delegates all attribute access to the underlying Ibis GroupedTable
+    while ensuring that methods returning Table objects are wrapped in TypedTable.
+    """
+
+    def __init__(self, grouped_table: GroupedTable, model_class: type[IbisModel]):
+        object.__setattr__(self, "_grouped_table", grouped_table)
+        object.__setattr__(self, "_model_class", model_class)
+
+    def __getattr__(self, name: str):
+        """Delegate attribute access to the underlying grouped table."""
+        attr = getattr(self._grouped_table, name)
+
+        # If it's a callable (method), wrap it to return TypedTable when appropriate
+        if callable(attr):
+            def wrapped_method(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                # If the result is a Table, wrap it in TypedTable
+                if isinstance(result, Table):
+                    return TypedTable(result, self._model_class)
+                return result
+            return wrapped_method
+
+        return attr
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return f"TypedGroupedTable({self._grouped_table})"
+
+
 class TypedTable:
     """Wrapper around an Ibis Table that preserves type information.
 
@@ -134,12 +167,16 @@ class TypedTable:
         object.__setattr__(self, "_model_class", model_class)
 
         # Create properties for each field to enable typed access
+        # Only set attributes for columns that actually exist in the table
+        available_columns = set(ibis_table.columns)
         for field_name in model_class._fields_metadata.keys():
             if not hasattr(self.__class__, field_name):
                 # Add the field as an attribute that returns the column
                 col_name = model_class.get_column_name(field_name)
-                # Use object.__setattr__ to bypass our custom __setattr__
-                object.__setattr__(self, field_name, ibis_table[col_name])
+                # Only set if the column exists in the table
+                if col_name in available_columns:
+                    # Use object.__setattr__ to bypass our custom __setattr__
+                    object.__setattr__(self, field_name, ibis_table[col_name])
 
     def __getattr__(self, name: str):
         """Delegate attribute access to the underlying ibis table.
@@ -151,8 +188,23 @@ class TypedTable:
             col_name = self._model_class.get_column_name(name)
             return self._ibis_table[col_name]
 
-        # Otherwise delegate to the ibis table
-        return getattr(self._ibis_table, name)
+        # Get the attribute from the ibis table
+        attr = getattr(self._ibis_table, name)
+
+        # If it's a callable (method), wrap it to return TypedTable when appropriate
+        if callable(attr):
+            def wrapped_method(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                # If the result is a Table, wrap it in TypedTable
+                if isinstance(result, Table):
+                    return TypedTable(result, self._model_class)
+                # If the result is a GroupedTable, wrap it in TypedGroupedTable
+                elif isinstance(result, GroupedTable):
+                    return TypedGroupedTable(result, self._model_class)
+                return result
+            return wrapped_method
+
+        return attr
 
     def __getitem__(self, key):
         """Delegate indexing to the underlying ibis table."""
