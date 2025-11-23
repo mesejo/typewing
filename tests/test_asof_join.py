@@ -5,11 +5,11 @@ from __future__ import annotations
 import ibis
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 from typewing.model import TypedTable
 
 
-class TickData(IbisModel):
+class TickData(SemanticModel):
     """Model for tick data with timestamps."""
 
     __tablename__ = "ticks"
@@ -19,7 +19,7 @@ class TickData(IbisModel):
     symbol: str
 
 
-class TradeData(IbisModel):
+class TradeData(SemanticModel):
     """Model for trade data with timestamps."""
 
     __tablename__ = "trades"
@@ -158,7 +158,7 @@ def test_asof_join_without_by_key(duckdb_con):
     )
 
     # Bind to a model
-    class SimpleLeft(IbisModel):
+    class SimpleLeft(SemanticModel):
         __tablename__ = "simple_left"
         time: int
         value: float

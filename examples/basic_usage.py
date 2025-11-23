@@ -1,35 +1,34 @@
 """Basic usage example for ibis-var."""
 
 import ibis
+from ibis.expr.types import BooleanColumn, FloatingColumn, IntegerColumn, StringColumn
 
-from typewing import Field, IbisModel
+from typewing import SemanticModel
 
 
 # Define models
-class User(IbisModel):
+class User(SemanticModel):
     """User model with typed fields."""
 
     __tablename__ = "users"
 
-    id: int
-    name: str
-    email: str
-    age: int | None = Field(description="User's age in years")
-    is_active: bool = Field(
-        alias="active", description="Whether the user account is active"
-    )
+    id: IntegerColumn
+    name: StringColumn
+    email: StringColumn
+    age: IntegerColumn | None = None
+    is_active: BooleanColumn = False
 
 
-class Product(IbisModel):
+class Product(SemanticModel):
     """Product model."""
 
     __tablename__ = "products"
 
-    product_id: int
-    name: str
-    category: str
-    price: float
-    stock: int
+    product_id: IntegerColumn
+    name: StringColumn
+    category: StringColumn
+    price: FloatingColumn
+    stock: IntegerColumn
 
 
 def setup_sample_data(con):
@@ -100,14 +99,14 @@ def main():
     print("✓ Sample data created")
 
     # Bind models
-    UserTable = User.bind(con)
+    user_table = User.bind(con)
     ProductTable = Product.bind(con)
     print("✓ Models bound to database\n")
 
     # Example 1: Simple select
     print("Example 1: Get all users")
     print("-" * 60)
-    all_users = UserTable.execute()
+    all_users = user_table.execute()
     print(all_users)
     print()
 
@@ -115,8 +114,8 @@ def main():
     print("Example 2: Filter active users with age > 25")
     print("-" * 60)
     active_users = (
-        UserTable.filter(UserTable.is_active)
-        .filter(UserTable.age > 25)
+        user_table.filter(user_table.is_active)
+        .filter(user_table.age > 25)
         .select("name", "email", "age")
     )
     results = active_users.execute()
@@ -127,9 +126,9 @@ def main():
     print("Example 3: Users ordered by age (descending)")
     print("-" * 60)
     ordered = (
-        UserTable.filter(UserTable.age.notnull())
+        user_table.filter(user_table.age.notnull())
         .select("name", "age")
-        .order_by(UserTable.age.desc())
+        .order_by(user_table.age.desc())
     )
     results = ordered.execute()
     print(results)
@@ -138,7 +137,7 @@ def main():
     # Example 4: Aggregation
     print("Example 4: User statistics")
     print("-" * 60)
-    filtered_users = UserTable.filter(UserTable.age.notnull())
+    filtered_users = user_table.filter(user_table.age.notnull())
     stats = filtered_users.aggregate(
         total_users=filtered_users.age.count(),
         avg_age=filtered_users.age.mean(),
@@ -194,7 +193,6 @@ def main():
     print(f"User fields: {User.get_field_names()}")
     print(f"Product fields: {Product.get_field_names()}")
     print(f"\nUser table name: {User.get_table_name()}")
-    print(f"'is_active' maps to column: {User.get_column_name('is_active')}")
     print()
 
     print("=" * 60)

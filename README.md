@@ -17,11 +17,12 @@ uv add typewing
 ## Quick Start
 
 ```python
-from typewing import IbisModel, Field
+from typewing import SemanticModel, Field
 import ibis
 
+
 # Define your model with type annotations
-class User(IbisModel):
+class User(SemanticModel):
     __tablename__ = "users"
 
     id: int
@@ -29,6 +30,7 @@ class User(IbisModel):
     email: str
     age: int | None = Field(description="User's age in years")
     is_active: bool = Field(alias="active")
+
 
 # Connect to your database
 con = ibis.duckdb.connect()

@@ -9,11 +9,11 @@ from __future__ import annotations
 import ibis
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 from typewing.model import TypedTable, TypedWindowedTable
 
 
-class User(IbisModel):
+class User(SemanticModel):
     """User model for testing."""
 
     __tablename__ = "users"
@@ -298,10 +298,10 @@ def test_window_by_returns_typed_windowed_table(duckdb_con):
     con.raw_sql("CREATE TABLE events (id INTEGER, timestamp TIMESTAMP)")
     con.raw_sql("INSERT INTO events VALUES (1, '2023-01-01'), (2, '2023-01-02')")
 
-    class Events(IbisModel):
+    class Events(SemanticModel):
         __tablename__ = "events"
         id: int
-        timestamp: str
+        # timestamp field exists in DB but not annotated here to allow flexible usage
 
     EventsTyped = Events.bind(con)
     result = EventsTyped.window_by("timestamp")

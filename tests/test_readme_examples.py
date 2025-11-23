@@ -1,15 +1,17 @@
 """Tests for README.md code examples."""
 
+from typing import cast
+
 import ibis
 import pytest
 
-from typewing import Field, IbisModel
+from typewing import SemanticModel
 
 
 # Model definitions from README examples
 
 
-class User(IbisModel):
+class User(SemanticModel):
     """User model from Quick Start example."""
 
     __tablename__ = "users"
@@ -17,11 +19,11 @@ class User(IbisModel):
     id: int
     name: str
     email: str
-    age: int | None = Field(description="User's age in years")
-    is_active: bool = Field(alias="active")
+    age: int | None
+    active: bool
 
 
-class Product(IbisModel):
+class Product(SemanticModel):
     """Product model from Detailed Usage example."""
 
     __tablename__ = "products"
@@ -30,21 +32,21 @@ class Product(IbisModel):
     name: str
     price: float
     description: str | None
-    category: str = Field(description="Product category")
-    is_available: bool = Field(alias="available")
+    category: str
+    available: bool
 
 
-class UserWithAliases(IbisModel):
-    """User model demonstrating field aliases."""
+class UserWithAliases(SemanticModel):
+    """User model (no longer using aliases)."""
 
     __tablename__ = "users_aliases"
 
-    user_id: int = Field(alias="id")
-    full_name: str = Field(alias="name")
-    is_active: bool = Field(alias="active")
+    id: int
+    name: str
+    active: bool
 
 
-class UserAnalytics(IbisModel):
+class UserAnalytics(SemanticModel):
     """User model for analytics example."""
 
     __tablename__ = "users_analytics"
@@ -56,7 +58,7 @@ class UserAnalytics(IbisModel):
     country: str
 
 
-class Sale(IbisModel):
+class Sale(SemanticModel):
     """Sales model from Sales Analytics example."""
 
     __tablename__ = "sales"
@@ -216,10 +218,10 @@ def test_quick_start_filter_age(duckdb_con):
 
 
 def test_quick_start_filter_active(duckdb_con):
-    """Test Quick Start example: filter by is_active == True."""
+    """Test Quick Start example: filter by active == True."""
     UserTable = User.bind(duckdb_con)
 
-    query = UserTable.filter(UserTable.is_active)
+    query = UserTable.filter(UserTable.active)
     results = query.execute()
 
     assert len(results) == 5
@@ -232,7 +234,7 @@ def test_quick_start_chained_query(duckdb_con):
 
     query = (
         UserTable.filter(UserTable.age > 18)
-        .filter(UserTable.is_active)
+        .filter(UserTable.active)
         .select("name", "email")
         .order_by("name")
         .limit(10)
@@ -254,7 +256,7 @@ def test_field_aliases_mapping(duckdb_con):
     """Test Field Aliases example: Python names map to database columns."""
     UserAliasTable = UserWithAliases.bind(duckdb_con)
 
-    query = UserAliasTable.filter(UserAliasTable.is_active)
+    query = UserAliasTable.filter(UserAliasTable.active)
     results = query.execute()
 
     assert len(results) == 2
@@ -263,21 +265,11 @@ def test_field_aliases_mapping(duckdb_con):
     assert "active" in results.columns
 
 
-def test_field_aliases_column_name_method():
-    """Test that get_column_name returns correct database column names."""
-    assert UserWithAliases.get_column_name("user_id") == "id"
-    assert UserWithAliases.get_column_name("full_name") == "name"
-    assert UserWithAliases.get_column_name("is_active") == "active"
-
-
-# Query Building Tests
-
-
 def test_query_building_filtering(duckdb_con):
     """Test Query Building example: filtering."""
     UserTable = User.bind(duckdb_con)
 
-    active_users = UserTable.filter(UserTable.is_active)
+    active_users = UserTable.filter(UserTable.active)
     results = active_users.execute()
 
     assert len(results) == 5
@@ -321,7 +313,7 @@ def test_query_building_aggregations_count(duckdb_con):
     """Test Query Building example: count aggregation."""
     UserTable = User.bind(duckdb_con)
 
-    user_count = UserTable.count().execute()
+    user_count = cast(int, UserTable.count().execute())
 
     assert user_count == 6
 
@@ -394,32 +386,11 @@ def test_query_building_joins(duckdb_con):
 # Advanced Usage Tests
 
 
-def test_advanced_usage_get_fields():
-    """Test Advanced Usage example: get_fields()."""
-    fields = User.get_fields()
-
-    assert "id" in fields
-    assert "name" in fields
-    assert "age" in fields
-    assert fields["age"]["description"] == "User's age in years"
-    assert fields["is_active"]["alias"] == "active"
-
-
 def test_advanced_usage_get_field_names():
     """Test Advanced Usage example: get_field_names()."""
     field_names = User.get_field_names()
 
-    assert field_names == ["id", "name", "email", "age", "is_active"]
-
-
-def test_advanced_usage_get_field_types():
-    """Test Advanced Usage example: get_field_types()."""
-    field_types = User.get_field_types()
-
-    assert field_types["id"] is int
-    assert field_types["name"] is str
-    assert field_types["email"] is str
-    assert "age" in field_types
+    assert field_names == ["id", "name", "email", "age", "active"]
 
 
 def test_advanced_usage_get_table_name():
@@ -427,13 +398,6 @@ def test_advanced_usage_get_table_name():
     table_name = User.get_table_name()
 
     assert table_name == "users"
-
-
-def test_advanced_usage_get_column_name():
-    """Test Advanced Usage example: get_column_name()."""
-    col_name = User.get_column_name("is_active")
-
-    assert col_name == "active"
 
 
 def test_advanced_usage_ibis_expressions(duckdb_con):
@@ -503,7 +467,7 @@ def test_example_ecommerce_affordable_products(duckdb_con):
     ProductTable = Product.bind(duckdb_con)
 
     query = (
-        ProductTable.filter(ProductTable.is_available)
+        ProductTable.filter(ProductTable.available)
         .filter(ProductTable.price < 50)
         .order_by(ProductTable.price.asc())
     )
@@ -545,27 +509,6 @@ def test_example_sales_analytics_daily_revenue(duckdb_con):
     assert day1["num_sales"] == 2
 
 
-# Model Definition Tests
-
-
-def test_product_model_field_metadata():
-    """Test Product model field metadata."""
-    fields = Product.get_fields()
-
-    assert fields["category"]["description"] == "Product category"
-    assert fields["is_available"]["alias"] == "available"
-
-
-def test_product_model_optional_fields():
-    """Test Product model has optional description field."""
-    field_types = Product.get_field_types()
-
-    assert "description" in field_types
-
-
-# Executing Queries Tests
-
-
 def test_executing_queries_iterate_results(duckdb_con):
     """Test Executing Queries example: iterate over results."""
     UserTable = User.bind(duckdb_con)
@@ -590,7 +533,7 @@ def test_executing_queries_iterate_results(duckdb_con):
 def test_default_tablename():
     """Test that table name defaults to lowercase class name when not specified."""
 
-    class DefaultTable(IbisModel):
+    class DefaultTable(SemanticModel):
         id: int
         name: str
 
@@ -615,7 +558,7 @@ def test_complex_filter_conditions(duckdb_con):
     query = (
         ProductTable.filter(ProductTable.category == "Electronics")
         .filter(ProductTable.price < 100)
-        .filter(ProductTable.is_available)
+        .filter(ProductTable.available)
     )
 
     results = query.execute()

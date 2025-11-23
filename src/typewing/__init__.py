@@ -1,4 +1,5 @@
-from typewing.model import Field, IbisModel
+from typewing.backend import TypedBackend
+from typewing.model import SemanticModel, TypedTable
 
 
 try:
@@ -6,5 +7,5 @@ try:
 except ModuleNotFoundError:
     import importlib_metadata
 
-__all__ = ["IbisModel", "Field"]
-__version__ = importlib_metadata.version(__package__)
+__all__ = ["SemanticModel", "TypedBackend", "TypedTable"]
+__version__ = importlib_metadata.version(__package__ or "typewing")

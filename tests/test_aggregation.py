@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 
 
-class TestData(IbisModel):
+class TestData(SemanticModel):
     """Model for test data table."""
 
     __tablename__ = "test_data"
@@ -19,7 +19,7 @@ class TestData(IbisModel):
     string_col: str
     bool_col: bool
     bigint_col: int
-    timestamp_col: str  # Will store timestamp as string for simplicity
+    # Note: timestamp_col is TIMESTAMP in DB, not string
 
 
 @pytest.fixture

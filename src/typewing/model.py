@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     ClassVar,
     Iterable,
+    Literal,
+    Mapping,
+    Self,
     Sequence,
     TypeVar,
     get_type_hints,
@@ -22,33 +26,13 @@ if TYPE_CHECKING:
     from ibis.expr.types.temporal_windows import WindowedTable
     from ibis.selectors import Selector
 
-T = TypeVar("T", bound="IbisModel")
-
-
-class Field:
-    """Field definition for IbisModel attributes.
-
-    Args:
-        description: Field description for documentation
-        alias: Column name in the database table (if different from field name)
-    """
-
-    def __init__(
-        self,
-        *,
-        description: str | None = None,
-        alias: str | None = None,
-    ):
-        self.description = description
-        self.alias = alias
+T = TypeVar("T", bound="SemanticModel")
 
 
 class FieldDescriptor:
-    """Descriptor for model fields that enables access on both class and instances.
+    """Simple descriptor for model fields.
 
-    This descriptor allows field access on:
-    1. The model class itself (for hasattr checks and IDE autocomplete)
-    2. TypedTable instances (returns the actual column)
+    This enables field access on both the class and instances.
     """
 
     def __init__(self, field_name: str):
@@ -68,17 +52,16 @@ class FieldDescriptor:
             # Accessed from the class, return self to indicate the field exists
             return self
 
-        # If accessed from a TypedTable instance, return the column
-        if isinstance(obj, TypedTable):
-            col_name = obj._model_class.get_column_name(self.field_name)
-            return obj._ibis_table[col_name]
+        # If accessed from a SemanticModel instance, return the column
+        if isinstance(obj, SemanticModel):
+            return obj._ibis_table[self.field_name]
 
         # For other cases, just return self
         return self
 
-    def __set__(self, obj, value):
-        """Prevent setting field values."""
-        raise AttributeError(f"Cannot set field '{self.field_name}' on model class")
+    # def __set__(self, obj, value):
+    #     """Prevent setting field values."""
+    #     raise AttributeError(f"Cannot set field '{self.field_name}' on model")
 
     def __repr__(self):
         """Return string representation."""
@@ -86,14 +69,16 @@ class FieldDescriptor:
 
 
 class ModelMeta(type):
-    """Metaclass for IbisModel that handles field registration."""
+    """Metaclass for SemanticModel that handles field registration."""
 
-    def __new__(mcs, name: str, bases: tuple, namespace: dict, **kwargs):
+    def __new__(
+        mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any], **kwargs
+    ):
         # Create the class first
         cls = super().__new__(mcs, name, bases, namespace)
 
-        # Skip for the base IbisModel class itself
-        if name == "IbisModel":
+        # Skip for the base SemanticModel class itself
+        if name == "SemanticModel":
             return cls
 
         # Get type hints for this class only (not inherited)
@@ -102,42 +87,17 @@ class ModelMeta(type):
         else:
             hints = {}
 
-        # Store field metadata
-        cls._fields_metadata = {}
+        # Store field names (just the names, no complex metadata)
+        cls._field_names = [
+            field_name for field_name in hints.keys() if not field_name.startswith("_")
+        ]
         cls._table_name = namespace.get("__tablename__")
 
-        # Process each annotated field
-        for field_name, field_type in hints.items():
-            if field_name.startswith("_"):
-                continue
-
-            # Get the field value if it exists
-            field_value = (
-                getattr(cls, field_name, None) if field_name in namespace else None
-            )
-
-            metadata = {
-                "type": field_type,
-                "alias": None,
-                "description": None,
-            }
-
-            # If it's a Field instance, extract metadata
-            if isinstance(field_value, Field):
-                metadata["alias"] = field_value.alias
-                metadata["description"] = field_value.description
-
-            cls._fields_metadata[field_name] = metadata
-
-        # Now add class-level descriptors for each field
-        # This enables IDE autocomplete on the class itself
-        for field_name in cls._fields_metadata.keys():
-            if not hasattr(cls, field_name) or isinstance(
-                getattr(cls, field_name, None), Field
-            ):
-                # Create a descriptor that provides documentation
-                descriptor = FieldDescriptor(field_name)
-                setattr(cls, field_name, descriptor)
+        # Add class-level descriptors for each field
+        # This enables IDE autocomplete and hasattr checks on the class itself
+        for field_name in cls._field_names:
+            if not hasattr(cls, field_name):
+                setattr(cls, field_name, FieldDescriptor(field_name))
 
         return cls
 
@@ -146,25 +106,29 @@ class TypedGroupedTable:
     """Wrapper around an Ibis GroupedTable that preserves type information.
 
     This class delegates all attribute access to the underlying Ibis GroupedTable
-    while ensuring that methods returning Table objects are wrapped in TypedTable.
+    while ensuring that methods returning Table objects are wrapped in the model class.
     """
 
-    def __init__(self, grouped_table: GroupedTable, model_class: type[IbisModel]):
-        object.__setattr__(self, "_grouped_table", grouped_table)
-        object.__setattr__(self, "_model_class", model_class)
+    def __init__(
+        self,
+        grouped_table: GroupedTable,
+        model_class: type[SemanticModel],
+    ):
+        self._grouped_table = grouped_table
+        self._model_class = model_class
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying grouped table."""
         attr = getattr(self._grouped_table, name)
 
-        # If it's a callable (method), wrap it to return TypedTable when appropriate
+        # If it's a callable (method), wrap it to return model instance when appropriate
         if callable(attr):
 
             def wrapped_method(*args, **kwargs):
                 result = attr(*args, **kwargs)
-                # If the result is a Table, wrap it in TypedTable
+                # If the result is a Table, wrap it in the model class
                 if isinstance(result, Table):
-                    return TypedTable(result, self._model_class)
+                    return self._model_class(result)
                 return result
 
             return wrapped_method
@@ -180,25 +144,29 @@ class TypedWindowedTable:
     """Wrapper around an Ibis WindowedTable that preserves type information.
 
     This class delegates all attribute access to the underlying Ibis WindowedTable
-    while ensuring that methods returning Table objects are wrapped in TypedTable.
+    while ensuring that methods returning Table objects are wrapped in the model class.
     """
 
-    def __init__(self, windowed_table: WindowedTable, model_class: type[IbisModel]):
-        object.__setattr__(self, "_windowed_table", windowed_table)
-        object.__setattr__(self, "_model_class", model_class)
+    def __init__(
+        self,
+        windowed_table: WindowedTable,
+        model_class: type[SemanticModel],
+    ):
+        self._windowed_table = windowed_table
+        self._model_class = model_class
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying windowed table."""
         attr = getattr(self._windowed_table, name)
 
-        # If it's a callable (method), wrap it to return TypedTable when appropriate
+        # If it's a callable (method), wrap it to return model instance when appropriate
         if callable(attr):
 
             def wrapped_method(*args, **kwargs):
                 result = attr(*args, **kwargs)
-                # If the result is a Table, wrap it in TypedTable
+                # If the result is a Table, wrap it in the model class
                 if isinstance(result, Table):
-                    return TypedTable(result, self._model_class)
+                    return self._model_class(result)
                 return result
 
             return wrapped_method
@@ -210,37 +178,241 @@ class TypedWindowedTable:
         return f"TypedWindowedTable({self._windowed_table})"
 
 
-class TypedTable:
-    """Wrapper around an Ibis Table that preserves type information.
+class SemanticModel(metaclass=ModelMeta):
+    """Base class for typed Ibis tables with a unified design.
 
-    This class delegates all attribute access to the underlying Ibis Table
-    while maintaining type hints for IDE autocomplete.
+    Define your table schema using type annotations, and add custom methods
+    directly to the model class. When you bind to a connection, you get back
+    an instance that wraps the Ibis table with full type safety.
+
+    Example:
+        ```python
+        from typewing import SemanticModel
+        import ibis
+
+        class User(SemanticModel):
+            __tablename__ = "users"
+
+            id: int
+            name: str
+            email: str
+            age: int | None
+
+            # Add custom methods directly
+            def adults_only(self):
+                return self.filter(self.age >= 18)
+
+            def by_country(self, country: str):
+                return self.filter(self.country == country)
+
+        # Bind to a connection
+        con = ibis.duckdb.connect()
+        UserTable = User.bind(con)
+
+        # Use custom and standard methods
+        query = UserTable.adults_only().select("name", "email")
+        result = query.execute()
+        ```
     """
 
-    def __init__(self, ibis_table: Table, model_class: type[IbisModel]):
-        object.__setattr__(self, "_ibis_table", ibis_table)
-        object.__setattr__(self, "_model_class", model_class)
+    _field_names: ClassVar[list[str]] = []
+    _table_name: ClassVar[str | None] = None
+
+    def __init__(self, ibis_table: Table):
+        """Initialize the model with an Ibis table.
+
+        Args:
+            ibis_table: The underlying Ibis table to wrap
+        """
+        self._ibis_table = ibis_table
+        assert self.__typewing_schema_matches__(ibis_table.schema())
 
         # Create properties for each field to enable typed access
-        # Only set attributes for columns that actually exist in the table
         available_columns = set(ibis_table.columns)
-        for field_name in model_class._fields_metadata.keys():
-            if not hasattr(self.__class__, field_name):
-                # Add the field as an attribute that returns the column
-                col_name = model_class.get_column_name(field_name)
-                # Only set if the column exists in the table
-                if col_name in available_columns:
-                    # Use object.__setattr__ to bypass our custom __setattr__
-                    object.__setattr__(self, field_name, ibis_table[col_name])
+        for field_name in self._field_names:
+            if field_name in available_columns:
+                object.__setattr__(self, field_name, ibis_table[field_name])
 
-    # ==================== Mirror Methods for IDE Autocomplete ====================
-    # These methods explicitly mirror ibis Table methods to enable IDE autocomplete.
-    # Each method delegates to _ibis_table and wraps the result appropriately.
+    @classmethod
+    def get_table_name(cls) -> str:
+        """Get the table name for this model."""
+        if cls._table_name:
+            return cls._table_name
+        # Default to lowercase class name
+        return cls.__name__.lower()
+
+    @classmethod
+    def bind(cls: type[T], connection: Any, table_name: str | None = None) -> T:
+        """Bind this model to an ibis connection and return a model instance.
+
+        Args:
+            connection: Ibis connection object (e.g., ibis.duckdb.connect())
+            table_name: Optional table name override
+
+        Returns:
+            An instance of this model class wrapping the ibis Table
+
+        Example:
+            ```python
+            con = ibis.duckdb.connect()
+            UserTable = User.bind(con)
+
+            # Now you can use it with custom and standard methods
+            query = UserTable.adults_only().filter(UserTable.age > 18)
+            results = query.execute()
+            ```
+        """
+        table_name = table_name or cls.get_table_name()
+        ibis_table = connection.table(table_name)
+        return cls(ibis_table)
+
+    @classmethod
+    def get_field_names(cls) -> list[str]:
+        """Get list of all field names."""
+        return cls._field_names.copy()
+
+    def __typewing_schema_matches__(
+        self, schema: sch.Schema, strict: bool = False
+    ) -> bool:
+        """Validate that the table schema matches the model's type annotations.
+
+        This method uses the type annotations of the fields and checks that types
+        match. For example, int should match dtype int64 or int32.
+
+        Parameters
+        ----------
+        schema
+            The Ibis schema to validate against.
+        strict
+            If True, requires exact type match. If False, allows compatible types
+            (e.g., int matches int32, int64, etc.).
+
+        Returns
+        -------
+        bool
+            True if schema matches annotations, False otherwise.
+        """
+        import types
+        from typing import Union, get_args, get_origin
+
+        import ibis.expr.datatypes as dt
+        from ibis.expr.types import Column
+
+        # Get type hints for this class
+        hints = get_type_hints(type(self))
+
+        # Check each annotated field that exists in the schema
+        # Note: We only validate fields present in the schema, allowing for
+        # projections and selections that may have a subset of fields
+        for field_name in self._field_names:
+            # Skip if field not in annotations
+            if field_name not in hints:
+                continue
+
+            # Skip if field doesn't exist in schema (could be a projection)
+            if field_name not in schema:
+                continue
+
+            # Get the annotation and schema type
+            annotation = hints[field_name]
+            schema_type = schema[field_name]
+
+            # Handle Union types (e.g., int | None for nullable fields)
+            actual_type = annotation
+
+            # Check if it's a Union type (including | syntax and Union[] syntax)
+            origin = get_origin(annotation)
+            if origin is Union or isinstance(annotation, types.UnionType):
+                # Get the non-None type from the union
+                args = get_args(annotation)
+                non_none_types = [arg for arg in args if arg is not type(None)]
+                if len(non_none_types) == 1:
+                    actual_type = non_none_types[0]
+
+            # Convert annotation to expected Ibis datatype category
+            # Handle Ibis Column types (e.g., IntegerColumn, StringColumn)
+            if isinstance(actual_type, type) and issubclass(actual_type, Column):
+                # Map Column types to their corresponding datatype classes
+                column_type_map = {
+                    "IntegerColumn": dt.Integer,
+                    "StringColumn": dt.String,
+                    "FloatingColumn": dt.Floating,
+                    "BooleanColumn": dt.Boolean,
+                    "DateColumn": dt.Date,
+                    "TimestampColumn": dt.Timestamp,
+                    "DecimalColumn": dt.Decimal,
+                }
+                expected_type_class = column_type_map.get(actual_type.__name__)
+                if expected_type_class is None:
+                    # Unknown column type, skip validation for this field
+                    continue
+
+                # Check if schema type is instance of expected type
+                if not isinstance(schema_type, expected_type_class):
+                    return False
+
+            # Handle Python native types
+            elif actual_type is int:
+                if strict:
+                    # In strict mode, we'd need to know the exact type
+                    # For now, just check it's an integer type
+                    if not isinstance(schema_type, dt.Integer):
+                        return False
+                else:
+                    # Non-strict: accept any integer type
+                    if not isinstance(schema_type, dt.Integer):
+                        return False
+
+            elif actual_type is str:
+                if not isinstance(schema_type, dt.String):
+                    return False
+
+            elif actual_type is float:
+                if strict:
+                    # In strict mode, check for specific floating type
+                    if not isinstance(schema_type, dt.Floating):
+                        return False
+                else:
+                    # Non-strict: accept any floating type
+                    if not isinstance(schema_type, dt.Floating):
+                        return False
+
+            elif actual_type is bool:
+                if not isinstance(schema_type, dt.Boolean):
+                    return False
+
+            else:
+                # Try to convert the annotation to an Ibis dtype and compare
+                try:
+                    from ibis.expr.datatypes import dtype as make_dtype
+
+                    expected_dtype = make_dtype(actual_type)
+
+                    if strict:
+                        # Strict mode: types must match exactly
+                        if type(expected_dtype) is not type(schema_type):
+                            return False
+                    else:
+                        # Non-strict: check if they're compatible
+                        # (same base class, e.g., both Integer)
+                        if not isinstance(schema_type, type(expected_dtype)):
+                            if not isinstance(expected_dtype, type(schema_type)):
+                                return False
+                except Exception:
+                    # If we can't convert, skip validation for this field
+                    continue
+
+        return True
+
+    # ==================== Core Query Methods ====================
 
     def filter(
         self,
-        *predicates: ir.BooleanValue | bool | Sequence[ir.BooleanValue | bool],
-    ) -> TypedTable:
+        *predicates: ir.Value
+        | bool
+        | Sequence[ir.Value | bool]
+        | Callable[[Any], bool],
+    ) -> Self:
         """Filter rows based on boolean predicates.
 
         Parameters
@@ -250,7 +422,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Filtered table.
 
         Examples
@@ -258,14 +430,14 @@ class TypedTable:
         >>> UserTable.filter(UserTable.age > 25)
         >>> UserTable.filter(UserTable.age > 25, UserTable.is_active)
         """
-        result = self._ibis_table.filter(*predicates)
-        return TypedTable(result, self._model_class)
+        result = self._ibis_table.filter(*predicates)  # type: ignore[arg-type]
+        return type(self)(result)
 
     def select(
         self,
         *exprs: ir.Value | str | Iterable[ir.Value | str],
         **named_exprs: ir.Value | str,
-    ) -> TypedTable:
+    ) -> Self:
         """Select columns or expressions from the table.
 
         Parameters
@@ -277,7 +449,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with selected columns.
 
         Examples
@@ -286,14 +458,14 @@ class TypedTable:
         >>> UserTable.select(UserTable.name, UserTable.age + 1)
         """
         result = self._ibis_table.select(*exprs, **named_exprs)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def aggregate(
         self,
         metrics: ir.Scalar | Sequence[ir.Scalar] | None = (),
         /,
         **kw_metrics: ir.Scalar,
-    ) -> TypedTable:
+    ) -> Self:
         """Aggregate the table.
 
         Parameters
@@ -305,7 +477,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Aggregated table.
 
         Examples
@@ -313,13 +485,13 @@ class TypedTable:
         >>> UserTable.aggregate(avg_age=UserTable.age.mean())
         >>> UserTable.aggregate([UserTable.age.mean(), UserTable.age.max()])
         """
-        result = self._ibis_table.aggregate(metrics, **kw_metrics)
-        return TypedTable(result, self._model_class)
+        result = self._ibis_table.aggregate(metrics, **kw_metrics)  # type: ignore[arg-type]
+        return type(self)(result)
 
     def order_by(
         self,
         *by: str | ir.Column | tuple[str | ir.Column, bool],
-    ) -> TypedTable:
+    ) -> Self:
         """Sort the table by one or more expressions.
 
         Parameters
@@ -329,7 +501,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Sorted table.
 
         Examples
@@ -337,10 +509,10 @@ class TypedTable:
         >>> UserTable.order_by("age")
         >>> UserTable.order_by(UserTable.age.desc())
         """
-        result = self._ibis_table.order_by(*by)
-        return TypedTable(result, self._model_class)
+        result = self._ibis_table.order_by(*by)  # type: ignore[arg-type]
+        return type(self)(result)
 
-    def limit(self, n: int | None, /, *, offset: int = 0) -> TypedTable:
+    def limit(self, n: int | None, /, *, offset: int = 0) -> Self:
         """Select a limited number of rows.
 
         Parameters
@@ -352,7 +524,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with at most n rows.
 
         Examples
@@ -361,9 +533,9 @@ class TypedTable:
         >>> UserTable.limit(10, offset=5)
         """
         result = self._ibis_table.limit(n, offset=offset)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def head(self, n: int = 5, /) -> TypedTable:
+    def head(self, n: int = 5, /) -> Self:
         """Select the first n rows.
 
         Parameters
@@ -373,7 +545,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with first n rows.
 
         Examples
@@ -382,9 +554,9 @@ class TypedTable:
         >>> UserTable.head(10)
         """
         result = self._ibis_table.head(n)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def mutate(self, *exprs: ir.Value, **mutations: ir.Value | str) -> TypedTable:
+    def mutate(self, *exprs: ir.Value, **mutations: ir.Value | str) -> Self:
         """Add or modify columns.
 
         Parameters
@@ -396,7 +568,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with added/modified columns.
 
         Examples
@@ -405,13 +577,13 @@ class TypedTable:
         >>> UserTable.mutate(UserTable.name.upper().name("name_upper"))
         """
         result = self._ibis_table.mutate(*exprs, **mutations)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def distinct(
         self,
         *,
         on: str | Iterable[str] | Selector | None = None,
-    ) -> TypedTable:
+    ) -> Self:
         """Remove duplicate rows.
 
         Parameters
@@ -421,7 +593,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with unique rows.
 
         Examples
@@ -430,7 +602,7 @@ class TypedTable:
         >>> UserTable.distinct(on="email")
         """
         result = self._ibis_table.distinct(on=on)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def group_by(
         self,
@@ -453,18 +625,33 @@ class TypedTable:
         >>> UserTable.group_by("country").aggregate(count=UserTable.count())
         >>> UserTable.group_by(UserTable.age > 25).aggregate(avg_age=UserTable.age.mean())
         """
-        result = self._ibis_table.group_by(*by)
-        return TypedGroupedTable(result, self._model_class)
+        result = self._ibis_table.group_by(*by)  # type: ignore[arg-type]
+        return TypedGroupedTable(result, type(self))
 
     def join(
         self,
-        right: Table | TypedTable,
-        predicates: ir.BooleanValue | Sequence[ir.BooleanValue] = (),
+        right: Table | SemanticModel,
+        predicates: (
+            str
+            | Sequence[
+                str
+                | ir.BooleanColumn
+                | Literal[True]
+                | Literal[False]
+                | tuple[
+                    str | ir.Column | ir.Deferred,
+                    str | ir.Column | ir.Deferred,
+                ]
+                | ir.BooleanValue
+            ]
+        ) = (),
         *,
-        how: str = "inner",
+        how: Literal[
+            "inner", "left", "right", "outer", "asof", "semi", "anti"
+        ] = "inner",
         lname: str = "",
         rname: str = "{name}_right",
-    ) -> TypedTable:
+    ) -> Self:
         """Join this table with another table.
 
         Parameters
@@ -482,28 +669,41 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Joined table.
 
         Examples
         --------
         >>> UserTable.join(OrdersTable, UserTable.id == OrdersTable.user_id)
         """
-        # Unwrap TypedTable if necessary
-        right_table = right._ibis_table if isinstance(right, TypedTable) else right
-        result = self._ibis_table.join(
+        # Unwrap SemanticModel if necessary
+        right_table = right._ibis_table if isinstance(right, SemanticModel) else right
+        result = self._ibis_table.join(  # type: ignore[arg-type]
             right_table, predicates, how=how, lname=lname, rname=rname
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def left_join(
         self,
-        right: Table | TypedTable,
-        predicates: ir.BooleanValue | Sequence[ir.BooleanValue] = (),
+        right: Table | SemanticModel,
+        predicates: (
+            str
+            | Sequence[
+                str
+                | ir.BooleanColumn
+                | Literal[True]
+                | Literal[False]
+                | tuple[
+                    str | ir.Column | ir.Deferred,
+                    str | ir.Column | ir.Deferred,
+                ]
+                | ir.BooleanValue
+            ]
+        ) = (),
         *,
         lname: str = "",
         rname: str = "{name}_right",
-    ) -> TypedTable:
+    ) -> Self:
         """Left outer join with another table.
 
         Parameters
@@ -519,27 +719,40 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Joined table.
 
         Examples
         --------
         >>> UserTable.left_join(OrdersTable, UserTable.id == OrdersTable.user_id)
         """
-        right_table = right._ibis_table if isinstance(right, TypedTable) else right
-        result = self._ibis_table.left_join(
+        right_table = right._ibis_table if isinstance(right, SemanticModel) else right
+        result = self._ibis_table.left_join(  # type: ignore[arg-type]
             right_table, predicates, lname=lname, rname=rname
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def inner_join(
         self,
-        right: Table | TypedTable,
-        predicates: ir.BooleanValue | Sequence[ir.BooleanValue] = (),
+        right: Table | SemanticModel,
+        predicates: (
+            str
+            | Sequence[
+                str
+                | ir.BooleanColumn
+                | Literal[True]
+                | Literal[False]
+                | tuple[
+                    str | ir.Column | ir.Deferred,
+                    str | ir.Column | ir.Deferred,
+                ]
+                | ir.BooleanValue
+            ]
+        ) = (),
         *,
         lname: str = "",
         rname: str = "{name}_right",
-    ) -> TypedTable:
+    ) -> Self:
         """Inner join with another table.
 
         Parameters
@@ -555,38 +768,38 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Joined table.
 
         Examples
         --------
         >>> UserTable.inner_join(OrdersTable, UserTable.id == OrdersTable.user_id)
         """
-        right_table = right._ibis_table if isinstance(right, TypedTable) else right
-        result = self._ibis_table.inner_join(
+        right_table = right._ibis_table if isinstance(right, SemanticModel) else right
+        result = self._ibis_table.inner_join(  # type: ignore[arg-type]
             right_table, predicates, lname=lname, rname=rname
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def asof_join(
         self,
-        right: Table | TypedTable,
-        predicates: ir.BooleanValue | Sequence[ir.BooleanValue] = (),
-        by: str | ir.Value | Sequence[str | ir.Value] = (),
+        right: Table | SemanticModel,
+        on: str | ir.BooleanColumn,
+        predicates: str | ir.BooleanColumn | Sequence[str | ir.BooleanColumn] = (),
         *,
-        tolerance: ir.IntervalValue | None = None,
+        tolerance: ir.IntervalScalar | None = None,
         lname: str = "",
         rname: str = "{name}_right",
-    ) -> TypedTable:
+    ) -> Self:
         """Perform an as-of join with another table.
 
         Parameters
         ----------
         right
             Table to join with.
-        predicates
+        on
             Join conditions (typically inequality on time column).
-        by
+        predicates
             Additional columns that must match exactly.
         tolerance
             Maximum time difference allowed.
@@ -597,18 +810,18 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Joined table.
 
         Examples
         --------
         >>> TicksTable.asof_join(TradesTable, TicksTable.time >= TradesTable.time, "symbol")
         """
-        right_table = right._ibis_table if isinstance(right, TypedTable) else right
-        result = self._ibis_table.asof_join(
-            right_table, predicates, by, tolerance=tolerance, lname=lname, rname=rname
+        right_table = right._ibis_table if isinstance(right, SemanticModel) else right
+        result = self._ibis_table.asof_join(  # type: ignore[arg-type]
+            right_table, on, predicates, tolerance=tolerance, lname=lname, rname=rname
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def count(self) -> ir.IntegerScalar:
         """Count the number of rows in the table.
@@ -643,7 +856,7 @@ class TypedTable:
         """
         return self._ibis_table.execute(**kwargs)
 
-    # ==================== Phase 2: Schema & Metadata Methods ====================
+    # ==================== Schema & Metadata Methods ====================
 
     @property
     def columns(self) -> tuple[str, ...]:
@@ -696,12 +909,12 @@ class TypedTable:
         """
         return self._ibis_table.get_name()
 
-    def info(self) -> TypedTable:
+    def info(self) -> Self:
         """Return summary information about the table.
 
         Returns
         -------
-        TypedTable
+        Self
             Table with schema information (name, type, nullable).
 
         Examples
@@ -709,17 +922,17 @@ class TypedTable:
         >>> UserTable.info()
         """
         result = self._ibis_table.info()
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 2: Set Operations ====================
+    # ==================== Set Operations ====================
 
     def union(
         self,
-        table: Table | TypedTable,
+        table: Table | SemanticModel,
         /,
-        *rest: Table | TypedTable,
+        *rest: Table | SemanticModel,
         distinct: bool = False,
-    ) -> TypedTable:
+    ) -> Self:
         """Compute the union of multiple tables.
 
         Parameters
@@ -733,7 +946,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Union of all tables.
 
         Examples
@@ -741,23 +954,25 @@ class TypedTable:
         >>> UserTable.union(OtherUsersTable)
         >>> UserTable.union(Table1, Table2, distinct=True)
         """
-        # Unwrap TypedTable if necessary
-        unwrapped_table = table._ibis_table if isinstance(table, TypedTable) else table
+        # Unwrap SemanticModel if necessary
+        unwrapped_table = (
+            table._ibis_table if isinstance(table, SemanticModel) else table
+        )
         unwrapped_rest = tuple(
-            t._ibis_table if isinstance(t, TypedTable) else t for t in rest
+            t._ibis_table if isinstance(t, SemanticModel) else t for t in rest
         )
         result = self._ibis_table.union(
             unwrapped_table, *unwrapped_rest, distinct=distinct
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def intersect(
         self,
-        table: Table | TypedTable,
+        table: Table | SemanticModel,
         /,
-        *rest: Table | TypedTable,
+        *rest: Table | SemanticModel,
         distinct: bool = True,
-    ) -> TypedTable:
+    ) -> Self:
         """Compute the intersection of multiple tables.
 
         Parameters
@@ -771,29 +986,31 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Intersection of all tables.
 
         Examples
         --------
         >>> UserTable.intersect(ActiveUsersTable)
         """
-        unwrapped_table = table._ibis_table if isinstance(table, TypedTable) else table
+        unwrapped_table = (
+            table._ibis_table if isinstance(table, SemanticModel) else table
+        )
         unwrapped_rest = tuple(
-            t._ibis_table if isinstance(t, TypedTable) else t for t in rest
+            t._ibis_table if isinstance(t, SemanticModel) else t for t in rest
         )
         result = self._ibis_table.intersect(
             unwrapped_table, *unwrapped_rest, distinct=distinct
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def difference(
         self,
-        table: Table | TypedTable,
+        table: Table | SemanticModel,
         /,
-        *rest: Table | TypedTable,
+        *rest: Table | SemanticModel,
         distinct: bool = True,
-    ) -> TypedTable:
+    ) -> Self:
         """Compute the difference of multiple tables.
 
         Parameters
@@ -807,25 +1024,27 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Rows in self that are not in other tables.
 
         Examples
         --------
         >>> AllUsersTable.difference(InactiveUsersTable)
         """
-        unwrapped_table = table._ibis_table if isinstance(table, TypedTable) else table
+        unwrapped_table = (
+            table._ibis_table if isinstance(table, SemanticModel) else table
+        )
         unwrapped_rest = tuple(
-            t._ibis_table if isinstance(t, TypedTable) else t for t in rest
+            t._ibis_table if isinstance(t, SemanticModel) else t for t in rest
         )
         result = self._ibis_table.difference(
             unwrapped_table, *unwrapped_rest, distinct=distinct
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 2: Data Manipulation ====================
+    # ==================== Data Manipulation ====================
 
-    def drop(self, *fields: str | Selector) -> TypedTable:
+    def drop(self, *fields: str | Selector) -> Self:
         """Remove columns from the table.
 
         Parameters
@@ -835,7 +1054,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table without specified columns.
 
         Examples
@@ -844,11 +1063,9 @@ class TypedTable:
         >>> UserTable.drop("col1", "col2", "col3")
         """
         result = self._ibis_table.drop(*fields)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def fill_null(
-        self, replacements: ir.Scalar | dict[str, ir.Scalar], /
-    ) -> TypedTable:
+    def fill_null(self, replacements: Any | Mapping[str, Any], /) -> Self:
         """Fill null values in the table.
 
         Parameters
@@ -858,7 +1075,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with nulls filled.
 
         Examples
@@ -867,9 +1084,9 @@ class TypedTable:
         >>> UserTable.fill_null({"age": 0, "name": "Unknown"})
         """
         result = self._ibis_table.fill_null(replacements)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def fillna(self, replacements: ir.Scalar | dict[str, ir.Scalar], /) -> TypedTable:
+    def fillna(self, replacements: Any | dict[str, Any], /) -> Self:
         """Fill null values (alias for fill_null).
 
         Parameters
@@ -879,7 +1096,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with nulls filled.
 
         Examples
@@ -887,9 +1104,9 @@ class TypedTable:
         >>> UserTable.fillna(0)
         """
         result = self._ibis_table.fillna(replacements)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def unpack(self, *columns: str) -> TypedTable:
+    def unpack(self, *columns: str) -> Self:
         """Unpack struct columns into individual columns.
 
         Parameters
@@ -899,7 +1116,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with struct fields unpacked as separate columns.
 
         Examples
@@ -907,11 +1124,11 @@ class TypedTable:
         >>> UserTable.unpack("address")  # Unpacks address.street, address.city, etc.
         """
         result = self._ibis_table.unpack(*columns)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 2: Type Casting ====================
+    # ==================== Type Casting ====================
 
-    def cast(self, schema: Any, /) -> TypedTable:
+    def cast(self, schema: Any, /) -> Self:
         """Cast columns to specified types.
 
         Parameters
@@ -921,7 +1138,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with columns cast to new types.
 
         Examples
@@ -929,9 +1146,9 @@ class TypedTable:
         >>> UserTable.cast({"age": "int32", "score": "float64"})
         """
         result = self._ibis_table.cast(schema)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def try_cast(self, schema: Any, /) -> TypedTable:
+    def try_cast(self, schema: Any, /) -> Self:
         """Attempt to cast columns, returning null on failure.
 
         Parameters
@@ -941,7 +1158,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with columns cast to new types (nulls where cast failed).
 
         Examples
@@ -949,16 +1166,16 @@ class TypedTable:
         >>> UserTable.try_cast({"age": "int32"})
         """
         result = self._ibis_table.try_cast(schema)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 2: Special Operations ====================
+    # ==================== Special Operations ====================
 
-    def view(self) -> TypedTable:
+    def view(self) -> Self:
         """Create a view of the table for self-referencing operations.
 
         Returns
         -------
-        TypedTable
+        Self
             New table expression for self-joins.
 
         Examples
@@ -966,9 +1183,9 @@ class TypedTable:
         >>> UserTable.join(UserTable.view(), ...)  # Self-join
         """
         result = self._ibis_table.view()
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def alias(self, alias: str, /) -> TypedTable:
+    def alias(self, alias: str, /) -> Self:
         """Give the table an alias.
 
         Parameters
@@ -978,7 +1195,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Aliased table expression.
 
         Examples
@@ -986,14 +1203,14 @@ class TypedTable:
         >>> UserTable.alias("u")
         """
         result = self._ibis_table.alias(alias)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def cache(self) -> TypedTable:
+    def cache(self) -> Self:
         """Cache the table expression.
 
         Returns
         -------
-        TypedTable
+        Self
             Cached table expression.
 
         Examples
@@ -1001,7 +1218,7 @@ class TypedTable:
         >>> cached_users = UserTable.filter(UserTable.age > 25).cache()
         """
         result = self._ibis_table.cache()
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def window_by(self, time_col: str | ir.Value, /) -> TypedWindowedTable:
         """Create a windowed table for time-based operations.
@@ -1021,21 +1238,18 @@ class TypedTable:
         >>> UserTable.window_by("created_at")
         """
         result = self._ibis_table.window_by(time_col)
-        return TypedWindowedTable(result, self._model_class)
+        return TypedWindowedTable(result, type(self))
 
-    # ==================== Phase 3: Data Sampling & Inspection ====================
-
-    # Note: tail() is not available in standard ibis Table API
-    # It will work via __getattr__ fallback if backend supports it
+    # ==================== Data Sampling & Inspection ====================
 
     def sample(
         self,
         fraction: float,
         /,
         *,
-        method: str = "row",
+        method: Literal["row", "block"] = "row",
         seed: int | None = None,
-    ) -> TypedTable:
+    ) -> Self:
         """Sample a fraction of rows randomly.
 
         Parameters
@@ -1049,7 +1263,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Randomly sampled table.
 
         Examples
@@ -1058,9 +1272,9 @@ class TypedTable:
         >>> UserTable.sample(0.25, seed=42)  # Reproducible
         """
         result = self._ibis_table.sample(fraction, method=method, seed=seed)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def value_counts(self, *, name: str | None = None) -> TypedTable:
+    def value_counts(self, *, name: str | None = None) -> Self:
         """Compute frequency of each unique row.
 
         Parameters
@@ -1070,7 +1284,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with unique rows and their counts.
 
         Examples
@@ -1079,9 +1293,9 @@ class TypedTable:
         >>> UserTable.select("status").value_counts(name="frequency")
         """
         result = self._ibis_table.value_counts(name=name)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    def topk(self, k: int | None = None, *, name: str | None = None) -> TypedTable:
+    def topk(self, k: int | None = None, *, name: str | None = None) -> Self:
         """Get the top K most frequent values.
 
         Parameters
@@ -1093,7 +1307,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with top K most frequent values.
 
         Examples
@@ -1102,9 +1316,9 @@ class TypedTable:
         >>> UserTable.select("category").topk(5, name="count")
         """
         result = self._ibis_table.topk(k, name=name)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 3: Type Conversion ====================
+    # ==================== Type Conversion ====================
 
     def to_array(self) -> ir.Column:
         """Convert single-column table to array column.
@@ -1136,14 +1350,14 @@ class TypedTable:
         """
         return self._ibis_table.as_scalar()
 
-    def as_table(self) -> TypedTable:
+    def as_table(self) -> Self:
         """Ensure this expression is a table.
 
         This is a no-op for table expressions but ensures type.
 
         Returns
         -------
-        TypedTable
+        Self
             This table (no-op).
 
         Examples
@@ -1151,11 +1365,11 @@ class TypedTable:
         >>> expr.as_table()
         """
         result = self._ibis_table.as_table()
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 3: SQL & Advanced ====================
+    # ==================== SQL & Advanced ====================
 
-    def sql(self, query: str, /, *, dialect: str | None = None) -> TypedTable:
+    def sql(self, query: str, /, *, dialect: str | None = None) -> Self:
         """Execute SQL query on this table.
 
         Parameters
@@ -1167,7 +1381,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Result of SQL query.
 
         Examples
@@ -1176,15 +1390,15 @@ class TypedTable:
         >>> UserTable.sql("SELECT name, age FROM self ORDER BY age DESC", dialect="duckdb")
         """
         result = self._ibis_table.sql(query, dialect=dialect)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 3: Column Operations ====================
+    # ==================== Column Operations ====================
 
     def rename(
         self,
         *args: str | dict[str, str],
         **kwargs: str,
-    ) -> TypedTable:
+    ) -> Self:
         """Rename columns in the table.
 
         Parameters
@@ -1196,7 +1410,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with renamed columns.
 
         Examples
@@ -1205,7 +1419,7 @@ class TypedTable:
         >>> UserTable.rename({"id": "user_id", "name": "full_name"})
         """
         result = self._ibis_table.rename(*args, **kwargs)
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
     def relocate(
         self,
@@ -1213,7 +1427,7 @@ class TypedTable:
         before: str | Selector | None = None,
         after: str | Selector | None = None,
         **kwargs: str,
-    ) -> TypedTable:
+    ) -> Self:
         """Relocate columns to different positions.
 
         Parameters
@@ -1229,7 +1443,7 @@ class TypedTable:
 
         Returns
         -------
-        TypedTable
+        Self
             Table with relocated columns.
 
         Examples
@@ -1240,9 +1454,9 @@ class TypedTable:
         result = self._ibis_table.relocate(
             *columns, before=before, after=after, **kwargs
         )
-        return TypedTable(result, self._model_class)
+        return type(self)(result)
 
-    # ==================== Phase 3: Properties & Special ====================
+    # ==================== Properties & Special ====================
 
     @property
     def rowid(self) -> ir.IntegerValue:
@@ -1260,7 +1474,7 @@ class TypedTable:
         >>> UserTable.rowid
         >>> UserTable.select(UserTable.rowid, UserTable.name)
         """
-        return self._ibis_table.rowid
+        return self._ibis_table.rowid  # type: ignore[return-value]
 
     def __contains__(self, name: str) -> bool:
         """Check if column exists in the table.
@@ -1302,32 +1516,27 @@ class TypedTable:
             "Use table.count().execute() to get the row count."
         )
 
-    # ==================== End Mirror Methods ====================
+    # ==================== Delegation ====================
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying ibis table.
 
-        Handles field name to column name translation for aliased fields.
+        This enables access to columns and any ibis methods not explicitly wrapped.
         """
-        # Check if this is a model field that might have an alias
-        if hasattr(self, "_model_class") and name in self._model_class._fields_metadata:
-            col_name = self._model_class.get_column_name(name)
-            return self._ibis_table[col_name]
-
         # Get the attribute from the ibis table
         attr = getattr(self._ibis_table, name)
 
-        # If it's a callable (method), wrap it to return TypedTable when appropriate
+        # If it's a callable (method), wrap it to return Self when appropriate
         if callable(attr):
 
             def wrapped_method(*args, **kwargs):
                 result = attr(*args, **kwargs)
-                # If the result is a Table, wrap it in TypedTable
+                # If the result is a Table, wrap it in this model class
                 if isinstance(result, Table):
-                    return TypedTable(result, self._model_class)
+                    return type(self)(result)
                 # If the result is a GroupedTable, wrap it in TypedGroupedTable
                 elif isinstance(result, GroupedTable):
-                    return TypedGroupedTable(result, self._model_class)
+                    return TypedGroupedTable(result, type(self))
                 return result
 
             return wrapped_method
@@ -1341,14 +1550,13 @@ class TypedTable:
     def __dir__(self):
         """Show attributes from both this class and the underlying table."""
         base_attrs = list(set(dir(self._ibis_table) + list(object.__dir__(self))))
-        # Add model field names for autocomplete
-        if hasattr(self, "_model_class"):
-            base_attrs.extend(self._model_class.get_field_names())
+        # Add field names for autocomplete
+        base_attrs.extend(self._field_names)
         return list(set(base_attrs))
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return f"{self._model_class.__name__}({self._ibis_table})"
+        return f"{type(self).__name__}({self._ibis_table})"
 
     def __setattr__(self, name: str, value: Any):
         """Prevent attribute setting on the wrapper."""
@@ -1360,97 +1568,5 @@ class TypedTable:
             )
 
 
-class IbisModel(metaclass=ModelMeta):
-    """Base class for typed Ibis tables with SQLModel-like behavior.
-
-    Define your table schema using type annotations, then bind to a connection
-    to get a fully-typed Table that preserves all Ibis query building capabilities.
-
-    Example:
-        ```python
-        from typewing import IbisModel, Field
-        import ibis
-
-        class User(IbisModel):
-            __tablename__ = "users"
-
-            id: int
-            name: str
-            email: str
-            age: int | None = Field(description="User's age in years")
-
-        # Bind to a connection - returns a typed Table
-        con = ibis.duckdb.connect()
-        UserTable = User.bind(con)
-
-        # All Ibis operations work with full type safety
-        query = UserTable.filter(UserTable.age > 18).select("name", "email")
-
-        # IDE autocomplete works
-        print(UserTable.name)  # Column access
-        result = query.execute()  # Execute query
-        ```
-    """
-
-    _fields_metadata: ClassVar[dict[str, dict[str, Any]]] = {}
-    _table_name: ClassVar[str | None] = None
-
-    @classmethod
-    def get_table_name(cls) -> str:
-        """Get the table name for this model."""
-        if cls._table_name:
-            return cls._table_name
-        # Default to lowercase class name
-        return cls.__name__.lower()
-
-    @classmethod
-    def get_column_name(cls, field_name: str) -> str:
-        """Get the database column name for a field."""
-        metadata = cls._fields_metadata.get(field_name, {})
-        return metadata.get("alias") or field_name
-
-    @classmethod
-    def bind(
-        cls: type[T], connection: Any, table_name: str | None = None
-    ) -> TypedTable:
-        """Bind this model to an ibis connection and return a typed Table.
-
-        Args:
-            connection: Ibis connection object (e.g., ibis.duckdb.connect())
-            table_name: Optional table name override
-
-        Returns:
-            A TypedTable that wraps the ibis Table with type information
-
-        Example:
-            ```python
-            con = ibis.duckdb.connect()
-            UserTable = User.bind(con)
-
-            # Now you can use it like any ibis Table
-            query = UserTable.filter(UserTable.age > 18)
-            results = query.execute()
-            ```
-        """
-        table_name = table_name or cls.get_table_name()
-
-        # Get the actual ibis table
-        ibis_table = connection.table(table_name)
-
-        # Return a typed wrapper
-        return TypedTable(ibis_table, cls)
-
-    @classmethod
-    def get_fields(cls) -> dict[str, dict[str, Any]]:
-        """Get all field metadata for this model."""
-        return cls._fields_metadata.copy()
-
-    @classmethod
-    def get_field_names(cls) -> list[str]:
-        """Get list of all field names."""
-        return list(cls._fields_metadata.keys())
-
-    @classmethod
-    def get_field_types(cls) -> dict[str, type]:
-        """Get mapping of field names to their Python types."""
-        return {name: meta["type"] for name, meta in cls._fields_metadata.items()}
+# For backwards compatibility, export TypedTable as an alias
+TypedTable = SemanticModel

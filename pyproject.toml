@@ -12,13 +12,20 @@ dependencies = [
     "sqlglot>=23.4,<28,!=26.32.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pre-commit>=4.4.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.14.6",
     "ibis-framework[duckdb]>=11.0.0",
+]
+
+typing = [
+    "mypy>=1.18.2",
+    "pandas-stubs==2.3.0.250703",
+    "pyright>=1.1.407",
+    "pyarrow-stubs==19.2",
 ]
 
 [build-system]
@@ -41,3 +48,16 @@ lines-after-imports = 2
 skip = "*.lock,.direnv,.git,docs/_freeze/**/html.json"
 ignore-regex = '\b(DOUB|i[if]f|I[IF]F|lamduh|AFE|crate|ba)\b'
 builtin = "clear,rare,names"
+
+[tool.pyright]
+pythonPlatform = "All"
+# NOTE (`pyarrow-stubs` do unsafe `TypeAlias` and `TypeVar` imports)
+# pythonVersion = "3.9"
+reportMissingTypeArgument = "error"
+reportIncompatibleMethodOverride = "error"
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+reportPrivateImportUsage = "none"
+reportUnusedExpression = "none"    # handled by (https://docs.astral.sh/ruff/rules/unused-variable/)
+typeCheckingMode = "basic"
+include = ["src", "tests/test_readme_examples.py", "tests/test_model.py"]
