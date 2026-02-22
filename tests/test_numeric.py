@@ -10,11 +10,11 @@ import math
 import ibis
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 from typewing.model import TypedTable
 
 
-class NumericData(IbisModel):
+class NumericData(SemanticModel):
     """Model for numeric data."""
 
     __tablename__ = "numbers"

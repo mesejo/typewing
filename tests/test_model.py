@@ -1,12 +1,12 @@
-"""Tests for IbisModel functionality."""
+"""Tests for SemanticModel functionality."""
 
 import ibis
 import pytest
 
-from typewing import Field, IbisModel
+from typewing import SemanticModel
 
 
-class User(IbisModel):
+class User(SemanticModel):
     """Test model for users table."""
 
     __tablename__ = "users"
@@ -14,11 +14,11 @@ class User(IbisModel):
     id: int
     name: str
     email: str
-    age: int | None = Field(description="User's age in years")
-    is_active: bool = Field(alias="active")
+    age: int | None
+    active: bool
 
 
-class Product(IbisModel):
+class Product(SemanticModel):
     """Test model without explicit tablename (should default to 'product')."""
 
     product_id: int
@@ -72,18 +72,6 @@ def test_table_name_default():
     assert Product.get_table_name() == "product"
 
 
-def test_field_metadata():
-    """Test that field metadata is properly stored."""
-    fields = User.get_fields()
-
-    assert "id" in fields
-    assert "name" in fields
-    assert "age" in fields
-
-    assert fields["age"]["description"] == "User's age in years"
-    assert fields["is_active"]["alias"] == "active"
-
-
 def test_field_names():
     """Test getting list of field names."""
     field_names = User.get_field_names()
@@ -92,40 +80,19 @@ def test_field_names():
     assert "name" in field_names
     assert "email" in field_names
     assert "age" in field_names
-    assert "is_active" in field_names
-
-
-def test_field_types():
-    """Test getting field type mappings."""
-    field_types = User.get_field_types()
-
-    assert field_types["id"] is int
-    assert field_types["name"] is str
-    assert field_types["email"] is str
-    # age is Optional[int] which is Union[int, None]
-    assert "age" in field_types
-
-
-def test_column_name_with_alias():
-    """Test that field with alias returns correct column name."""
-    assert User.get_column_name("is_active") == "active"
-
-
-def test_column_name_without_alias():
-    """Test that field without alias returns field name."""
-    assert User.get_column_name("name") == "name"
+    assert "active" in field_names
 
 
 # Table Binding Tests
 
 
-def test_bind_returns_typed_table(duckdb_con):
-    """Test that bind() returns a TypedTable."""
+def test_bind_returns_model_instance(duckdb_con):
+    """Test that bind() returns a model instance."""
     UserTable = User.bind(duckdb_con)
 
     assert UserTable is not None
     assert hasattr(UserTable, "_ibis_table")
-    assert hasattr(UserTable, "_model_class")
+    assert isinstance(UserTable, User)
 
 
 def test_bound_table_has_ibis_methods(duckdb_con):
@@ -275,15 +242,14 @@ def test_column_in_filter(duckdb_con):
     assert len(result) > 0
 
 
-def test_column_with_alias(duckdb_con):
-    """Test accessing column that has an alias."""
+def test_active_column_access(duckdb_con):
+    """Test accessing active column."""
     UserTable = User.bind(duckdb_con)
 
-    # is_active maps to 'active' column
-    active_col = UserTable.is_active
+    active_col = UserTable.active
     assert active_col is not None
 
-    query = UserTable.filter(UserTable.is_active)
+    query = UserTable.filter(UserTable.active)
     result = query.execute()
 
     assert len(result) == 3
@@ -299,7 +265,7 @@ def test_model_has_typed_fields():
     assert hasattr(User, "name")
     assert hasattr(User, "email")
     assert hasattr(User, "age")
-    assert hasattr(User, "is_active")
+    assert hasattr(User, "active")
 
 
 def test_bound_table_preserves_fields(duckdb_con):
@@ -311,7 +277,7 @@ def test_bound_table_preserves_fields(duckdb_con):
     assert hasattr(UserTable, "name")
     assert hasattr(UserTable, "email")
     assert hasattr(UserTable, "age")
-    assert hasattr(UserTable, "is_active")
+    assert hasattr(UserTable, "active")
 
 
 # Edge Cases Tests

@@ -1,11 +1,10 @@
 import ibis
 import pytest
 
-from typewing import Field, IbisModel
-from typewing.model import TypedTable
+from typewing import SemanticModel, TypedTable
 
 
-class User(IbisModel):
+class User(SemanticModel):
     """Test model for users table."""
 
     __tablename__ = "users"
@@ -13,11 +12,11 @@ class User(IbisModel):
     id: int
     name: str
     email: str
-    age: int | None = Field(description="User's age in years")
-    is_active: bool = Field(alias="active")
+    age: int | None
+    active: bool
 
 
-class Product(IbisModel):
+class Product(SemanticModel):
     """Test model without explicit tablename (should default to 'product')."""
 
     product_id: int
@@ -76,7 +75,7 @@ def test_filter_returns_typed_table(duckdb_con):
     assert isinstance(query, TypedTable)
 
     # Test chained filters
-    query = UserTable.filter(UserTable.age > 28).filter(UserTable.is_active)
+    query = UserTable.filter(UserTable.age > 28).filter(UserTable.active)
     assert isinstance(query, TypedTable)
 
 
@@ -182,7 +181,7 @@ def test_group_by_aggregate_returns_typed_table(duckdb_con):
     UserTable = User.bind(duckdb_con)
 
     # group_by returns a GroupedTable, but aggregate on it returns a Table
-    query = UserTable.group_by(UserTable.is_active).aggregate(count=UserTable.count())
+    query = UserTable.group_by(UserTable.active).aggregate(count=UserTable.count())
     assert isinstance(query, TypedTable)
 
 

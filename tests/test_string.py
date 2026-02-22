@@ -8,11 +8,11 @@ from __future__ import annotations
 import ibis
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 from typewing.model import TypedTable
 
 
-class TextData(IbisModel):
+class TextData(SemanticModel):
     """Model for text data."""
 
     __tablename__ = "texts"

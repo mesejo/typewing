@@ -9,11 +9,11 @@ from __future__ import annotations
 import ibis
 import pytest
 
-from typewing import IbisModel
+from typewing import SemanticModel
 from typewing.model import TypedTable
 
 
-class SalesData(IbisModel):
+class SalesData(SemanticModel):
     """Model for sales data."""
 
     __tablename__ = "sales"
